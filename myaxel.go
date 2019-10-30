@@ -132,7 +132,7 @@ func multiDownlad(req *http.Request, f *os.File) {
 				return
 			}
 			ret.Lock()
-			ret.f.Seek(rangeStart*int64(i), os.SEEK_SET)
+			ret.f.Seek(rangeStart, os.SEEK_SET)
 			ret.f.Write(content)
 			ret.Unlock()
 
