@@ -4,26 +4,22 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"runtime"
-	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
 var (
-	timeout time.Duration
-	output  string
-	ret     result
-)
-
-var (
+	timeout   time.Duration
+	output    string
+	ret       result
 	fileSize  int64
 	startTime time.Time
 	multiMod  = true
+	errChan   chan error
 )
 
 type result struct {
@@ -47,8 +43,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println(timeout)
+	go func() {
+		err := <-errChan
+		panic(err)
+	}()
+
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	//TODO deal with timeout
 	_ = ctx
 	defer cancel()
 
@@ -88,16 +89,7 @@ func singleDownload(req *http.Request, f *os.File) {
 	}
 	defer resp.Body.Close()
 
-	content, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		panic(err)
-	}
-
-	n, err := f.Write(content)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("single done: %v", n)
+	io.Copy(f, resp.Body)
 }
 
 func multiDownlad(req *http.Request, f *os.File) {
@@ -114,8 +106,7 @@ func multiDownlad(req *http.Request, f *os.File) {
 			if i == numGoroutine-1 {
 				rangeEnd = fileSize
 			}
-			rangeStr := "bytes=" + strconv.FormatInt(rangeStart, 10) + "-" + strconv.FormatInt(rangeEnd, 10)
-			fmt.Println("range:", rangeStr)
+			rangeStr := fmt.Sprintf("bytes=%d-%d", rangeStart, rangeEnd)
 			newReq := cloneRequest(req)
 			newReq.Header.Set("Range", rangeStr)
 
@@ -126,18 +117,26 @@ func multiDownlad(req *http.Request, f *os.File) {
 			}
 			defer resp.Body.Close()
 
-			content, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				showError(err)
-				return
-			}
-			ret.Lock()
-			ret.f.Seek(rangeStart, os.SEEK_SET)
-			ret.f.Write(content)
-			ret.Unlock()
+			var seekLen int64
+			for {
+				ret.Lock()
+				ret.f.Seek(rangeStart+seekLen, os.SEEK_SET)
+				written, err := io.CopyN(ret.f, resp.Body, 4096)
+				if err != nil {
+					if err != io.EOF {
+						errChan <- err
+						ret.Unlock()
+						return
+					}
+					ret.downLen += written
+					ret.Unlock()
+					break
+				}
 
-			atomic.AddInt64(&ret.downLen, int64(len(content)))
-			fmt.Println("download: ", len(content))
+				seekLen += written
+				ret.downLen += written
+				ret.Unlock()
+			}
 		}(i)
 	}
 	wg.Wait()
@@ -177,9 +176,7 @@ func cloneRequest(req *http.Request) *http.Request {
 }
 
 func showError(err error) {
-	// fmt.Println(err)
 	panic(err)
-	os.Exit(1)
 }
 
 func summary() {
