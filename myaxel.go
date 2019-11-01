@@ -15,25 +15,17 @@ import (
 var (
 	timeout   time.Duration
 	output    string
-	ret       result
+	summary   *result
 	fileSize  int64
 	startTime time.Time
 	multiMod  = true
 	errChan   chan error
 )
 
-type result struct {
-	downLen int64
-
-	sync.Mutex
-	f *os.File
-}
-
 func init() {
 	flag.StringVar(&output, "o", "default", "local output file name")
 	flag.DurationVar(&timeout, "T", 30*time.Minute, "timeout")
 	startTime = time.Now()
-	ret = result{}
 }
 
 func main() {
@@ -57,11 +49,12 @@ func main() {
 	fileUrl := flag.Arg(0)
 
 	var err error
-	ret.f, err = os.Create(output)
+	f, err := os.Create(output)
 	if err != nil {
 		showError(err)
 	}
-	defer ret.f.Close()
+	summary = newResult(f)
+	defer summary.f.Close()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", fileUrl, nil)
 	if err != nil {
@@ -73,13 +66,14 @@ func main() {
 		showError(err)
 	}
 	if can {
-		multiDownlad(req, ret.f)
+		multiDownlad(req, summary.f)
 	} else {
 		fmt.Println("not support or litle file, download in sigle thread...")
-		singleDownload(req, ret.f)
+		singleDownload(req, summary.f)
 	}
 
-	summary()
+	summary.finished = true
+	fmt.Println(summary)
 }
 
 func singleDownload(req *http.Request, f *os.File) {
@@ -119,23 +113,23 @@ func multiDownlad(req *http.Request, f *os.File) {
 
 			var seekLen int64
 			for {
-				ret.Lock()
-				ret.f.Seek(rangeStart+seekLen, os.SEEK_SET)
-				written, err := io.CopyN(ret.f, resp.Body, 4096)
+				summary.Lock()
+				summary.f.Seek(rangeStart+seekLen, os.SEEK_SET)
+				written, err := io.CopyN(summary.f, resp.Body, 4096)
 				if err != nil {
 					if err != io.EOF {
 						errChan <- err
-						ret.Unlock()
+						summary.Unlock()
 						return
 					}
-					ret.downLen += written
-					ret.Unlock()
+					summary.downLen += written
+					summary.Unlock()
 					break
 				}
 
 				seekLen += written
-				ret.downLen += written
-				ret.Unlock()
+				summary.downLen += written
+				summary.Unlock()
 			}
 		}(i)
 	}
@@ -177,9 +171,4 @@ func cloneRequest(req *http.Request) *http.Request {
 
 func showError(err error) {
 	panic(err)
-}
-
-func summary() {
-	timeSpent := time.Since(startTime)
-	fmt.Printf("fileSize: %d, download %d in %v, %.2f bytes/s", fileSize, ret.downLen, timeSpent, float64(fileSize)/timeSpent.Seconds())
 }
