@@ -1,5 +1,9 @@
 package main
 
+//TODO signal
+//TODO downloader
+//TODO parse url
+
 import (
 	"context"
 	"flag"
@@ -13,19 +17,21 @@ import (
 )
 
 var (
-	timeout   time.Duration
-	output    string
-	summary   *result
-	fileSize  int64
-	startTime time.Time
-	multiMod  = true
-	errChan   chan error
+	timeout  time.Duration
+	outFile  string
+	summary  *result
+	fileSize int64
+	multiMod = true
+
+	errChan  chan error
+	doneChan chan struct{}
 )
 
 func init() {
-	flag.StringVar(&output, "o", "default", "local output file name")
+	flag.StringVar(&outFile, "o", "default", "local output file name")
 	flag.DurationVar(&timeout, "T", 30*time.Minute, "timeout")
-	startTime = time.Now()
+	errChan = make(chan error)
+	doneChan = make(chan struct{})
 }
 
 func main() {
@@ -41,49 +47,44 @@ func main() {
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	//TODO deal with timeout
-	_ = ctx
 	defer cancel()
 
-	//TODO url check
 	fileUrl := flag.Arg(0)
-
-	var err error
-	f, err := os.Create(output)
-	if err != nil {
-		showError(err)
-	}
-	summary = newResult(f)
-	defer summary.f.Close()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", fileUrl, nil)
 	if err != nil {
 		showError(err)
 	}
 
-	can, err := multiSupport(req)
+	ok, err := multiSupport(req)
 	if err != nil {
 		showError(err)
 	}
-	if can {
-		multiDownlad(req, summary.f)
-	} else {
-		fmt.Println("not support or litle file, download in sigle thread...")
-		singleDownload(req, summary.f)
+	if !ok {
+		fmt.Println("server not support or multiple thread, you may download it with a web browser")
+		return
 	}
+
+	f, err := os.Create(outFile)
+	if err != nil {
+		showError(err)
+	}
+	summary = newResult(f)
+	defer summary.f.Close()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		bar := newBar(fileSize, summary)
+		bar.show()
+	}()
+	multiDownlad(req, summary.f)
 
 	summary.finished = true
+	doneChan <- struct{}{}
+	wg.Wait()
 	fmt.Println(summary)
-}
-
-func singleDownload(req *http.Request, f *os.File) {
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-
-	io.Copy(f, resp.Body)
 }
 
 func multiDownlad(req *http.Request, f *os.File) {
@@ -140,9 +141,6 @@ func multiSupport(req *http.Request) (bool, error) {
 	resp, err := http.Head(req.URL.String())
 	if err != nil {
 		return false, err
-	}
-	if resp.ContentLength < 1024 {
-		return false, nil
 	}
 	fileSize = resp.ContentLength
 
