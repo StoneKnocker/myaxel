@@ -2,7 +2,7 @@ package main
 
 //TODO signal
 //TODO downloader
-//todo timeout
+//todo add unit test
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
 	"sync"
 	"time"
 )
@@ -25,8 +26,8 @@ var (
 
 	httpClient = http.DefaultClient
 
-	errChan  = make(chan error)
-	doneChan = make(chan struct{})
+	errChan = make(chan error)
+	sigChan = make(chan os.Signal, 1)
 )
 
 func init() {
@@ -41,6 +42,16 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
+
+	//deal with signal
+	signal.Notify(sigChan, os.Interrupt)
+	go signalHandler()
+
+	//deal with error
+	go func() {
+		err := <-errChan
+		panic(fmt.Sprintf("error collected: %v", err))
+	}()
 
 	if insecure {
 		httpClient = &http.Client{
@@ -65,13 +76,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	req, err := http.NewRequest("GET", rawURL, nil)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	ok, err := serverSupport(req)
+	ok, err := serverSupport(rawURL)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -88,13 +93,13 @@ func main() {
 		return
 	}
 	defer f.Close()
+	summary = newResult(f)
 
 	go func() {
-		err := <-errChan
-		panic(fmt.Sprintf("error collectd: %v", err))
+		loader := newDownloader(ctx, fileSize, rawURL, summary)
+		loader.do()
 	}()
 
-	summary = newResult(f)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -102,18 +107,13 @@ func main() {
 		bar := newBar(fileSize, summary)
 		bar.show()
 	}()
-
-	loader := newDownloader(ctx, fileSize, rawURL)
-	loader.do()
-
-	summary.finished = true
-	doneChan <- struct{}{}
 	wg.Wait()
+
 	fmt.Println(summary)
 }
 
-func serverSupport(req *http.Request) (bool, error) {
-	resp, err := http.Head(req.URL.String())
+func serverSupport(rawURL string) (bool, error) {
+	resp, err := http.Head(rawURL)
 	if err != nil {
 		return false, err
 	}
@@ -125,9 +125,12 @@ func serverSupport(req *http.Request) (bool, error) {
 	}
 	fileSize = resp.ContentLength
 
-	newReq := cloneRequest(req)
-	newReq.Header.Set("Range", "Bytes=0-1")
-	resp, err = httpClient.Do(newReq)
+	req, err := http.NewRequest("GET", rawURL, nil)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Range", "Bytes=0-1")
+	resp, err = httpClient.Do(req)
 	if err != nil {
 		return false, err
 	}
@@ -150,4 +153,15 @@ func cloneRequest(req *http.Request) *http.Request {
 
 func showError(err error) {
 	panic(err)
+}
+
+func signalHandler() {
+	switch <-sigChan {
+	case os.Interrupt:
+		fmt.Println("interrupted!!")
+		os.Exit(1)
+		panic(summary)
+	default:
+		panic("unknown")
+	}
 }

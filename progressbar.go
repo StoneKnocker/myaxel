@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/cheggaaa/pb/v3"
 )
 
@@ -21,16 +24,12 @@ func newBar(count int64, summary *result) *bar {
 func (b *bar) show() {
 	b.Start()
 
-loop:
-	for {
-		select {
-		case <-doneChan:
-			b.SetCurrent(b.total)
-			break loop
-		default:
-			b.SetCurrent(summary.downLen)
-		}
+	for !summary.finished {
+		b.SetCurrent(summary.downLen)
+		time.Sleep(time.Millisecond * 200)
 	}
 
+	b.SetCurrent(b.total)
 	b.Finish()
+	fmt.Println("finished bar ")
 }

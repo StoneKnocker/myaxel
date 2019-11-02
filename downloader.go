@@ -16,14 +16,16 @@ type downloader struct {
 	routineNum int
 	url        string
 	ctx        context.Context
+	summary    *result
 }
 
-func newDownloader(ctx context.Context, fileSize int64, url string) *downloader {
+func newDownloader(ctx context.Context, fileSize int64, url string, summary *result) *downloader {
 	return &downloader{
 		totalSize:  fileSize,
 		routineNum: runtime.NumCPU(),
 		url:        url,
 		ctx:        ctx,
+		summary:    summary,
 	}
 }
 
@@ -39,6 +41,7 @@ func (d *downloader) makeRequest(routineNO int) (*http.Request, error) {
 		rangeEnd = d.totalSize
 	}
 	rangeStr := fmt.Sprintf("bytes=%d-%d", rangeStart, rangeEnd)
+	fmt.Println(rangeStr)
 	req.Header.Set("Range", rangeStr)
 
 	return req, nil
@@ -72,29 +75,28 @@ func (d *downloader) do() {
 				case <-d.ctx.Done():
 					errChan <- errors.New("timeout, downloader exit")
 					return
-				case <-doneChan:
-					return
 				default:
-					summary.Lock()
-					summary.f.Seek(rangeStart+seekLen, os.SEEK_SET)
-					written, err := io.CopyN(summary.f, resp.Body, 4096)
+					d.summary.Lock()
+					d.summary.f.Seek(rangeStart+seekLen, os.SEEK_SET)
+					written, err := io.CopyN(d.summary.f, resp.Body, 4096)
 					if err != nil {
 						if err != io.EOF {
 							errChan <- err
-							summary.Unlock()
+							d.summary.Unlock()
 							return
 						}
-						summary.downLen += written
-						summary.Unlock()
+						d.summary.downLen += written
+						d.summary.Unlock()
 						break
 					}
 
 					seekLen += written
-					summary.downLen += written
-					summary.Unlock()
+					d.summary.downLen += written
+					d.summary.Unlock()
 				}
 			}
 		}(i)
 	}
 	wg.Wait()
+	d.summary.finished = true
 }
