@@ -2,13 +2,13 @@ package main
 
 //TODO signal
 //TODO downloader
-//TODO parse url
 //todo timeout
-//todo certificate
-//todo fix ./myaxel https://www.taobao.com
+//todo fix ./myaxel https://www.baidu.com progress bar
 
 import (
 	"context"
+	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -22,19 +22,20 @@ import (
 var (
 	timeout  time.Duration
 	outFile  string
+	insecure bool
 	fileSize int64
 	summary  *result
 
-	errChan  chan error
-	doneChan chan struct{}
+	httpClient = http.DefaultClient
+
+	errChan  = make(chan error)
+	doneChan = make(chan struct{})
 )
 
 func init() {
 	flag.StringVar(&outFile, "o", "default", "local output file name")
 	flag.DurationVar(&timeout, "T", 30*time.Minute, "timeout")
-
-	errChan = make(chan error)
-	doneChan = make(chan struct{})
+	flag.BoolVar(&insecure, "k", false, "do not verify the SSL certificate")
 }
 
 func main() {
@@ -42,6 +43,16 @@ func main() {
 	if flag.NArg() < 1 {
 		flag.Usage()
 		os.Exit(1)
+	}
+
+	if insecure {
+		httpClient = &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+			},
+		}
 	}
 
 	go func() {
@@ -117,7 +128,7 @@ func multiDownlad(req *http.Request, f *os.File) {
 			newReq := cloneRequest(req)
 			newReq.Header.Set("Range", rangeStr)
 
-			resp, err := http.DefaultClient.Do(newReq)
+			resp, err := httpClient.Do(newReq)
 			if err != nil {
 				showError(err)
 				return
@@ -154,11 +165,17 @@ func multiSupport(req *http.Request) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	if resp.StatusCode != 200 {
+		return false, errors.New("can't fetch the file")
+	}
+	if resp.Header.Get("Content-Length") == "" {
+		return false, errors.New("can't get the file length")
+	}
 	fileSize = resp.ContentLength
 
 	newReq := cloneRequest(req)
 	newReq.Header.Set("Range", "Bytes=0-1")
-	resp, err = http.DefaultClient.Do(newReq)
+	resp, err = httpClient.Do(newReq)
 	if err != nil {
 		return false, err
 	}
