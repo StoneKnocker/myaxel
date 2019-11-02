@@ -3,7 +3,6 @@ package main
 //TODO signal
 //TODO downloader
 //todo timeout
-//todo fix ./myaxel https://www.baidu.com progress bar
 
 import (
 	"context"
@@ -11,10 +10,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
-	"runtime"
 	"sync"
 	"time"
 )
@@ -55,11 +52,6 @@ func main() {
 		}
 	}
 
-	go func() {
-		err := <-errChan
-		panic(err)
-	}()
-
 	rawURL := flag.Arg(0)
 	filename, err := parseFilename(rawURL)
 	if err != nil {
@@ -73,28 +65,36 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", rawURL, nil)
+	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
-		showError(err)
+		fmt.Println(err)
+		return
 	}
 
-	ok, err := multiSupport(req)
+	ok, err := serverSupport(req)
 	if err != nil {
-		showError(err)
+		fmt.Println(err)
+		return
 	}
 	if !ok {
-		fmt.Println("server not support or multiple thread, you may download it with a web browser")
+		fmt.Println("server not support for multiple request, you may download it with a web browser")
 		return
 	}
 	fmt.Println("initialing ", outFile, "...")
 
 	f, err := os.Create(outFile)
 	if err != nil {
-		showError(err)
+		fmt.Println(err)
+		return
 	}
-	summary = newResult(f)
-	defer summary.f.Close()
+	defer f.Close()
 
+	go func() {
+		err := <-errChan
+		panic(fmt.Sprintf("error collectd: %v", err))
+	}()
+
+	summary = newResult(f)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -102,7 +102,9 @@ func main() {
 		bar := newBar(fileSize, summary)
 		bar.show()
 	}()
-	multiDownlad(req, summary.f)
+
+	loader := newDownloader(ctx, fileSize, rawURL)
+	loader.do()
 
 	summary.finished = true
 	doneChan <- struct{}{}
@@ -110,57 +112,7 @@ func main() {
 	fmt.Println(summary)
 }
 
-func multiDownlad(req *http.Request, f *os.File) {
-	numGoroutine := runtime.NumCPU()
-	rangeSize := fileSize / int64(numGoroutine)
-
-	var wg sync.WaitGroup
-	wg.Add(numGoroutine)
-	for i := 0; i < numGoroutine; i++ {
-		go func(i int) {
-			defer wg.Done()
-			rangeStart := int64(i) * rangeSize
-			rangeEnd := rangeSize*int64(i+1) - 1
-			if i == numGoroutine-1 {
-				rangeEnd = fileSize
-			}
-			rangeStr := fmt.Sprintf("bytes=%d-%d", rangeStart, rangeEnd)
-			newReq := cloneRequest(req)
-			newReq.Header.Set("Range", rangeStr)
-
-			resp, err := httpClient.Do(newReq)
-			if err != nil {
-				showError(err)
-				return
-			}
-			defer resp.Body.Close()
-
-			var seekLen int64
-			for {
-				summary.Lock()
-				summary.f.Seek(rangeStart+seekLen, os.SEEK_SET)
-				written, err := io.CopyN(summary.f, resp.Body, 4096)
-				if err != nil {
-					if err != io.EOF {
-						errChan <- err
-						summary.Unlock()
-						return
-					}
-					summary.downLen += written
-					summary.Unlock()
-					break
-				}
-
-				seekLen += written
-				summary.downLen += written
-				summary.Unlock()
-			}
-		}(i)
-	}
-	wg.Wait()
-}
-
-func multiSupport(req *http.Request) (bool, error) {
+func serverSupport(req *http.Request) (bool, error) {
 	resp, err := http.Head(req.URL.String())
 	if err != nil {
 		return false, err

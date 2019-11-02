@@ -9,11 +9,11 @@ import (
 
 type result struct {
 	sync.Mutex
-	f        *os.File
-	downLen  int64
-	finished bool
+	f       *os.File
+	downLen int64
 
-	start time.Time
+	finished bool
+	start    time.Time
 }
 
 func newResult(f *os.File) *result {

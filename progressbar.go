@@ -6,12 +6,14 @@ import (
 
 type bar struct {
 	summary *result
+	total   int64
 	*pb.ProgressBar
 }
 
 func newBar(count int64, summary *result) *bar {
 	return &bar{
 		summary:     summary,
+		total:       count,
 		ProgressBar: pb.Default.Start64(count),
 	}
 }
@@ -23,6 +25,7 @@ loop:
 	for {
 		select {
 		case <-doneChan:
+			b.SetCurrent(b.total)
 			break loop
 		default:
 			b.SetCurrent(summary.downLen)
