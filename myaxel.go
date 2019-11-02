@@ -3,6 +3,9 @@ package main
 //TODO signal
 //TODO downloader
 //TODO parse url
+//todo timeout
+//todo certificate
+//todo fix ./myaxel https://www.taobao.com
 
 import (
 	"context"
@@ -19,9 +22,8 @@ import (
 var (
 	timeout  time.Duration
 	outFile  string
-	summary  *result
 	fileSize int64
-	multiMod = true
+	summary  *result
 
 	errChan  chan error
 	doneChan chan struct{}
@@ -30,6 +32,7 @@ var (
 func init() {
 	flag.StringVar(&outFile, "o", "default", "local output file name")
 	flag.DurationVar(&timeout, "T", 30*time.Minute, "timeout")
+
 	errChan = make(chan error)
 	doneChan = make(chan struct{})
 }
@@ -46,12 +49,20 @@ func main() {
 		panic(err)
 	}()
 
+	rawURL := flag.Arg(0)
+	filename, err := parseFilename(rawURL)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	if outFile != "" {
+		outFile = filename
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	fileUrl := flag.Arg(0)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", fileUrl, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", rawURL, nil)
 	if err != nil {
 		showError(err)
 	}
@@ -64,6 +75,7 @@ func main() {
 		fmt.Println("server not support or multiple thread, you may download it with a web browser")
 		return
 	}
+	fmt.Println("initialing ", outFile, "...")
 
 	f, err := os.Create(outFile)
 	if err != nil {
