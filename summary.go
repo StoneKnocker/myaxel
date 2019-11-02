@@ -2,33 +2,30 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"sync"
 	"time"
 )
 
 type result struct {
-	sync.Mutex
-	f       *os.File
 	downLen int64
 
 	finished bool
 	start    time.Time
+	total    int64
 }
 
-func newResult(f *os.File) *result {
+func newResult(total int64) *result {
 	return &result{
-		f:     f,
 		start: time.Now(),
+		total: total,
 	}
 }
 
 func (r *result) String() string {
-	desc := "finished"
 	spent := time.Since(r.start)
+	desc := "finished"
 	if !r.finished {
 		desc = "interupted"
 	}
-	return fmt.Sprintf("%s, fileSize: %d, download %d in %v, %.2f bytes/s", desc, fileSize, r.downLen,
-		spent, float64(fileSize)/spent.Seconds())
+	return fmt.Sprintf("%s, fileSize: %d, download %d in %v, %.2f bytes/s", desc, r.total, r.downLen,
+		spent, float64(r.downLen)/spent.Seconds())
 }

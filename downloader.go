@@ -9,19 +9,26 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"sync/atomic"
 )
 
 type downloader struct {
-	totalSize  int64
+	sync.Mutex
+	fl *os.File
+
 	routineNum int
 	url        string
 	ctx        context.Context
 	summary    *result
 }
 
-func newDownloader(ctx context.Context, fileSize int64, url string, summary *result) *downloader {
+func newDownloader(ctx context.Context, filename string, url string, summary *result) *downloader {
+	f, err := os.Create(filename)
+	if err != nil {
+		panic(err)
+	}
 	return &downloader{
-		totalSize:  fileSize,
+		fl:         f,
 		routineNum: runtime.NumCPU(),
 		url:        url,
 		ctx:        ctx,
@@ -34,11 +41,11 @@ func (d *downloader) makeRequest(routineNO int) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
-	rangeSize := d.totalSize / int64(d.routineNum)
+	rangeSize := d.summary.total / int64(d.routineNum)
 	rangeStart := int64(routineNO) * rangeSize
 	rangeEnd := rangeSize*int64(routineNO+1) - 1
 	if routineNO == d.routineNum-1 {
-		rangeEnd = d.totalSize
+		rangeEnd = d.summary.total
 	}
 	rangeStr := fmt.Sprintf("bytes=%d-%d", rangeStart, rangeEnd)
 	fmt.Println(rangeStr)
@@ -67,7 +74,7 @@ func (d *downloader) do() {
 			}
 			defer resp.Body.Close()
 
-			rangeStart := int64(i) * d.totalSize / int64(d.routineNum)
+			rangeStart := int64(i) * d.summary.total / int64(d.routineNum)
 
 			var seekLen int64
 			for {
@@ -76,27 +83,31 @@ func (d *downloader) do() {
 					errChan <- errors.New("timeout, downloader exit")
 					return
 				default:
-					d.summary.Lock()
-					d.summary.f.Seek(rangeStart+seekLen, os.SEEK_SET)
-					written, err := io.CopyN(d.summary.f, resp.Body, 4096)
+					d.Lock()
+					d.fl.Seek(rangeStart+seekLen, os.SEEK_SET)
+					written, err := io.CopyN(d.fl, resp.Body, 4096)
 					if err != nil {
 						if err != io.EOF {
 							errChan <- err
-							d.summary.Unlock()
+							d.Unlock()
 							return
 						}
-						d.summary.downLen += written
-						d.summary.Unlock()
-						break
+						d.Unlock()
+						atomic.AddInt64(&d.summary.downLen, written)
+						strChan <- fmt.Sprintf("thread num: %d, down len: %d", i, seekLen+written)
+						return
 					}
+					d.Unlock()
 
 					seekLen += written
-					d.summary.downLen += written
-					d.summary.Unlock()
+					atomic.AddInt64(&d.summary.downLen, written)
 				}
 			}
 		}(i)
 	}
 	wg.Wait()
+	info, _ := d.fl.Stat()
+	_ = info
+	d.fl.Close()
 	d.summary.finished = true
 }

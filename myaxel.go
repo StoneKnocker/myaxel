@@ -1,7 +1,6 @@
 package main
 
 //TODO signal
-//TODO downloader
 //todo add unit test
 
 import (
@@ -14,24 +13,27 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 )
 
 var (
 	timeout  time.Duration
-	outFile  string
+	filename string
 	insecure bool
-	fileSize int64
-	summary  *result
 
+	filesize   int64
+	summary    *result
 	httpClient = http.DefaultClient
 
 	errChan = make(chan error)
 	sigChan = make(chan os.Signal, 1)
 )
 
+var strChan = make(chan string, 4)
+
 func init() {
-	flag.StringVar(&outFile, "o", "default", "local output file name")
+	flag.StringVar(&filename, "o", "default", "local output file name")
 	flag.DurationVar(&timeout, "T", 30*time.Minute, "timeout")
 	flag.BoolVar(&insecure, "k", false, "do not verify the SSL certificate")
 }
@@ -44,7 +46,7 @@ func main() {
 	}
 
 	//deal with signal
-	signal.Notify(sigChan, os.Interrupt)
+	signal.Notify(sigChan)
 	go signalHandler()
 
 	//deal with error
@@ -64,17 +66,14 @@ func main() {
 	}
 
 	rawURL := flag.Arg(0)
-	filename, err := parseFilename(rawURL)
+	outFile, err := parseFilename(rawURL)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	if outFile != "" {
-		outFile = filename
+	if filename != "" {
+		filename = outFile
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
 
 	ok, err := serverSupport(rawURL)
 	if err != nil {
@@ -85,18 +84,12 @@ func main() {
 		fmt.Println("server not support for multiple request, you may download it with a web browser")
 		return
 	}
-	fmt.Println("initialing ", outFile, "...")
 
-	f, err := os.Create(outFile)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer f.Close()
-	summary = newResult(f)
-
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	summary := newResult(filesize)
 	go func() {
-		loader := newDownloader(ctx, fileSize, rawURL, summary)
+		loader := newDownloader(ctx, filename, rawURL, summary)
 		loader.do()
 	}()
 
@@ -104,12 +97,17 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		bar := newBar(fileSize, summary)
+		bar := newBar(summary)
 		bar.show()
 	}()
 	wg.Wait()
 
 	fmt.Println(summary)
+
+	close(strChan)
+	for s := range strChan {
+		fmt.Println(s)
+	}
 }
 
 func serverSupport(rawURL string) (bool, error) {
@@ -123,7 +121,7 @@ func serverSupport(rawURL string) (bool, error) {
 	if resp.Header.Get("Content-Length") == "" {
 		return false, errors.New("can't get the file length")
 	}
-	fileSize = resp.ContentLength
+	filesize = resp.ContentLength
 
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
@@ -140,27 +138,14 @@ func serverSupport(rawURL string) (bool, error) {
 	return true, nil
 }
 
-func cloneRequest(req *http.Request) *http.Request {
-	newReq := new(http.Request)
-	*newReq = *req
-	newReq.Header = make(http.Header, len(req.Header))
-	for k, v := range req.Header {
-		newReq.Header[k] = append([]string(nil), v...)
-	}
-
-	return newReq
-}
-
-func showError(err error) {
-	panic(err)
-}
-
 func signalHandler() {
 	switch <-sigChan {
-	case os.Interrupt:
-		fmt.Println("interrupted!!")
+	case syscall.SIGINT:
+		fmt.Println("interrupt catched")
+		fmt.Println(summary)
 		os.Exit(1)
 		panic(summary)
+	case syscall.SIGSEGV:
 	default:
 		panic("unknown")
 	}
