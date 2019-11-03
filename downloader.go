@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"runtime"
 	"sync"
 	"sync/atomic"
 )
@@ -21,14 +20,14 @@ type downloader struct {
 	summary    *result
 }
 
-func newDownloader(ctx context.Context, filename string, url string, summary *result) *downloader {
+func newDownloader(ctx context.Context, routineNum int, filename string, url string, summary *result) *downloader {
 	f, err := os.Create(filename)
 	if err != nil {
 		panic(err)
 	}
 	return &downloader{
 		fl:         f,
-		routineNum: runtime.NumCPU(),
+		routineNum: routineNum,
 		url:        url,
 		ctx:        ctx,
 		summary:    summary,

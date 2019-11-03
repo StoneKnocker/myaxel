@@ -12,10 +12,12 @@ type bar struct {
 }
 
 func newBar(summary *result) *bar {
-	return &bar{
+	b := &bar{
 		summary:     summary,
-		ProgressBar: pb.Default.Start64(summary.total),
+		ProgressBar: pb.New64(summary.total),
 	}
+	b.Set(pb.Bytes, true)
+	return b
 }
 
 func (b *bar) show() {
@@ -23,7 +25,7 @@ func (b *bar) show() {
 
 	for !b.summary.finished {
 		b.SetCurrent(b.summary.downLen)
-		time.Sleep(time.Millisecond * 200)
+		time.Sleep(time.Millisecond * 50)
 	}
 
 	b.SetCurrent(b.summary.total)

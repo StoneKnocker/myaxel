@@ -15,9 +15,10 @@ import (
 )
 
 var (
-	timeout  time.Duration
-	filename string
-	insecure bool
+	timeout    time.Duration
+	filename   string
+	insecure   bool
+	routineNum int
 
 	httpClient = http.DefaultClient
 
@@ -29,6 +30,7 @@ func init() {
 	flag.StringVar(&filename, "o", "", "local output file name")
 	flag.DurationVar(&timeout, "T", 30*time.Minute, "timeout")
 	flag.BoolVar(&insecure, "k", false, "do not verify the SSL certificate")
+	flag.IntVar(&routineNum, "n", 2, "specify an alternative number of connections")
 }
 
 func main() {
@@ -86,7 +88,7 @@ func main() {
 
 	summary = newResult(filesize)
 	go func() {
-		loader := newDownloader(ctx, filename, rawURL, summary)
+		loader := newDownloader(ctx, routineNum, filename, rawURL, summary)
 		loader.do()
 	}()
 
