@@ -42,7 +42,7 @@ func (d *downloader) makeRequest(routineNO int) (*http.Request, error) {
 	}
 	rangeSize := d.summary.total / int64(d.routineNum)
 	rangeStart := int64(routineNO) * rangeSize
-	rangeEnd := rangeSize*int64(routineNO+1) - 1
+	rangeEnd := rangeStart + rangeSize - 1
 	if routineNO == d.routineNum-1 {
 		rangeEnd = d.summary.total
 	}
@@ -64,7 +64,6 @@ func (d *downloader) do() {
 				errChan <- err
 				return
 			}
-
 			resp, err := httpClient.Do(req)
 			if err != nil {
 				errChan <- err
@@ -73,7 +72,6 @@ func (d *downloader) do() {
 			defer resp.Body.Close()
 
 			rangeStart := int64(i) * d.summary.total / int64(d.routineNum)
-
 			var seekLen int64
 			for {
 				select {
