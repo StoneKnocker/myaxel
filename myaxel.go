@@ -74,7 +74,7 @@ func main() {
 		filename = outFile
 	}
 
-	filesize, err := serverSupport(rawURL)
+	filesize, err := fetchFilesize(rawURL)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -102,7 +102,7 @@ func main() {
 	fmt.Println(summary)
 }
 
-func serverSupport(rawURL string) (int64, error) {
+func fetchFilesize(rawURL string) (int64, error) {
 	var filesize int64
 	resp, err := http.Head(rawURL)
 	if err != nil {
