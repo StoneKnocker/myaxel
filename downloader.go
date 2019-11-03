@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -48,7 +47,6 @@ func (d *downloader) makeRequest(routineNO int) (*http.Request, error) {
 		rangeEnd = d.summary.total
 	}
 	rangeStr := fmt.Sprintf("bytes=%d-%d", rangeStart, rangeEnd)
-	fmt.Println(rangeStr)
 	req.Header.Set("Range", rangeStr)
 
 	return req, nil
@@ -80,7 +78,6 @@ func (d *downloader) do() {
 			for {
 				select {
 				case <-d.ctx.Done():
-					errChan <- errors.New("timeout, downloader exit")
 					return
 				default:
 					d.Lock()
@@ -94,7 +91,6 @@ func (d *downloader) do() {
 						}
 						d.Unlock()
 						atomic.AddInt64(&d.summary.downLen, written)
-						strChan <- fmt.Sprintf("thread num: %d, down len: %d", i, seekLen+written)
 						return
 					}
 					d.Unlock()
@@ -106,8 +102,6 @@ func (d *downloader) do() {
 		}(i)
 	}
 	wg.Wait()
-	info, _ := d.fl.Stat()
-	_ = info
 	d.fl.Close()
 	d.summary.finished = true
 }
