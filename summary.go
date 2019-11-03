@@ -24,8 +24,8 @@ func (r *result) String() string {
 	spent := time.Since(r.start)
 	desc := "finished"
 	if !r.finished {
-		desc = "interupted"
+		desc = "interrupted"
 	}
-	return fmt.Sprintf("%s, fileSize: %d, download %d in %v, %.2f bytes/s", desc, r.total, r.downLen,
-		spent, float64(r.downLen)/spent.Seconds())
+	return fmt.Sprintf("download %s, fileSize: %d, download %d bytes in %v, %.2f bytes/s", desc, r.total,
+		r.downLen, spent, float64(r.downLen)/spent.Seconds())
 }

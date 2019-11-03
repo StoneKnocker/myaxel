@@ -1,6 +1,5 @@
 package main
 
-//TODO signal
 //todo add unit test
 
 import (
@@ -30,8 +29,6 @@ var (
 	sigChan = make(chan os.Signal, 1)
 )
 
-var strChan = make(chan string, 4)
-
 func init() {
 	flag.StringVar(&filename, "o", "", "local output file name")
 	flag.DurationVar(&timeout, "T", 30*time.Minute, "timeout")
@@ -41,18 +38,23 @@ func init() {
 func main() {
 	flag.Parse()
 	if flag.NArg() < 1 {
-		flag.Usage()
+		usage()
 		os.Exit(1)
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
 	//deal with signal
-	signal.Notify(sigChan)
-	go signalHandler()
+	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	go signalHandler(cancel)
 
 	//deal with error
 	go func() {
 		err := <-errChan
-		panic(fmt.Sprintf("error collected: %v", err))
+		fmt.Printf("\n%v\n", err)
+		fmt.Println(summary)
+		os.Exit(1)
 	}()
 
 	if insecure {
@@ -85,9 +87,7 @@ func main() {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	summary := newResult(filesize)
+	summary = newResult(filesize)
 	go func() {
 		loader := newDownloader(ctx, filename, rawURL, summary)
 		loader.do()
@@ -103,11 +103,6 @@ func main() {
 	wg.Wait()
 
 	fmt.Println(summary)
-
-	close(strChan)
-	for s := range strChan {
-		fmt.Println(s)
-	}
 }
 
 func serverSupport(rawURL string) (bool, error) {
@@ -138,15 +133,20 @@ func serverSupport(rawURL string) (bool, error) {
 	return true, nil
 }
 
-func signalHandler() {
-	switch <-sigChan {
-	case syscall.SIGINT:
-		fmt.Println("interrupt catched")
-		fmt.Println(summary)
-		os.Exit(1)
-		panic(summary)
-	case syscall.SIGSEGV:
-	default:
-		panic("unknown")
-	}
+func signalHandler(calcel context.CancelFunc) {
+	<-sigChan
+	calcel()
+}
+
+func usage() {
+	fmt.Println(`
+Usage: myaxel [options] url
+
+optons:
+  -T duration
+        timeout (default 30m0s)
+  -k    do not verify the SSL certificate
+  -o string
+        local output file name (default "default"
+		`)
 }
