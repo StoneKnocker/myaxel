@@ -41,7 +41,7 @@ func init() {
 func main() {
 	flag.Parse()
 	if flag.NArg() < 1 {
-		flag.Usage()
+		usage()
 		os.Exit(1)
 	}
 
@@ -149,4 +149,17 @@ func signalHandler() {
 	default:
 		panic("unknown")
 	}
+}
+
+func usage() {
+	fmt.Println(`
+Usage: myaxel [options] url
+
+optons:
+  -T duration
+        timeout (default 30m0s)
+  -k    do not verify the SSL certificate
+  -o string
+        local output file name (default "default"
+		`)
 }
