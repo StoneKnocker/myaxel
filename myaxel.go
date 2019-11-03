@@ -31,6 +31,7 @@ func init() {
 	flag.DurationVar(&timeout, "T", 30*time.Minute, "timeout")
 	flag.BoolVar(&insecure, "k", false, "do not verify the SSL certificate")
 	flag.IntVar(&routineNum, "n", 2, "specify an alternative number of connections")
+	flag.Usage = usage
 }
 
 func main() {
@@ -143,10 +144,12 @@ func usage() {
 Usage: myaxel [options] url
 
 optons:
-  -T duration
-        timeout (default 30m0s)
-  -k    do not verify the SSL certificate
-  -o string
-        local output file name (default "default"
+	-T duration
+		timeout (default 30m0s)
+	-k	do not verify the SSL certificate
+	-o string
+		local output file name (default "")
+	-n int
+		specify an alternative number of connections (default 2)
 		`)
 }
