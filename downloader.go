@@ -85,8 +85,8 @@ func (d *downloader) do() {
 					written, err := io.CopyN(d.fl, resp.Body, 4096)
 					if err != nil {
 						if err != io.EOF {
-							errChan <- err
 							d.Unlock()
+							errChan <- err
 							return
 						}
 						d.Unlock()
@@ -94,9 +94,9 @@ func (d *downloader) do() {
 						return
 					}
 					d.Unlock()
+					atomic.AddInt64(&d.summary.downLen, written)
 
 					seekLen += written
-					atomic.AddInt64(&d.summary.downLen, written)
 				}
 			}
 		}(i)

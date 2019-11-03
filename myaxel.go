@@ -1,7 +1,5 @@
 package main
 
-//todo add unit test
-
 import (
 	"context"
 	"crypto/tls"
@@ -21,8 +19,6 @@ var (
 	filename string
 	insecure bool
 
-	filesize   int64
-	summary    *result
 	httpClient = http.DefaultClient
 
 	errChan = make(chan error)
@@ -50,6 +46,7 @@ func main() {
 	go signalHandler(cancel)
 
 	//deal with error
+	var summary *result
 	go func() {
 		err := <-errChan
 		fmt.Printf("\n%v\n", err)
@@ -77,12 +74,12 @@ func main() {
 		filename = outFile
 	}
 
-	ok, err := serverSupport(rawURL)
+	filesize, err := fetchFilesize(rawURL)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	if !ok {
+	if filesize == 0 {
 		fmt.Println("server not support for multiple request, you may download it with a web browser")
 		return
 	}
@@ -105,32 +102,33 @@ func main() {
 	fmt.Println(summary)
 }
 
-func serverSupport(rawURL string) (bool, error) {
+func fetchFilesize(rawURL string) (int64, error) {
+	var filesize int64
 	resp, err := http.Head(rawURL)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 	if resp.StatusCode != 200 {
-		return false, errors.New("can't fetch the file")
+		return 0, errors.New("can't fetch the file")
 	}
 	if resp.Header.Get("Content-Length") == "" {
-		return false, errors.New("can't get the file length")
+		return 0, errors.New("can't get the file length")
 	}
 	filesize = resp.ContentLength
 
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 	req.Header.Set("Range", "Bytes=0-1")
 	resp, err = httpClient.Do(req)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 	if resp.StatusCode != 206 {
-		return false, nil
+		return 0, nil
 	}
-	return true, nil
+	return filesize, nil
 }
 
 func signalHandler(calcel context.CancelFunc) {
