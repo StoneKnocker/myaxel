@@ -33,7 +33,7 @@ var (
 var strChan = make(chan string, 4)
 
 func init() {
-	flag.StringVar(&filename, "o", "default", "local output file name")
+	flag.StringVar(&filename, "o", "", "local output file name")
 	flag.DurationVar(&timeout, "T", 30*time.Minute, "timeout")
 	flag.BoolVar(&insecure, "k", false, "do not verify the SSL certificate")
 }
@@ -71,7 +71,7 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-	if filename != "" {
+	if filename == "" {
 		filename = outFile
 	}
 
