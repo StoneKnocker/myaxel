@@ -113,8 +113,11 @@ func main() {
 }
 
 func fetchFilesize(rawURL string) (int64, error) {
-	var filesize int64
-	resp, err := http.Head(rawURL)
+	req, err := http.NewRequest("HEAD", rawURL, nil)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return 0, err
 	}
@@ -124,9 +127,9 @@ func fetchFilesize(rawURL string) (int64, error) {
 	if resp.Header.Get("Content-Length") == "" {
 		return 0, errors.New("can't get the file length")
 	}
-	filesize = resp.ContentLength
+	filesize := resp.ContentLength
 
-	req, err := http.NewRequest("GET", rawURL, nil)
+	req, err = http.NewRequest("GET", rawURL, nil)
 	if err != nil {
 		return 0, err
 	}
