@@ -41,6 +41,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	if insecure {
+		httpClient = &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+			},
+		}
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -51,21 +61,18 @@ func main() {
 	//deal with error
 	var summary *result
 	go func() {
-		err := <-errChan
-		fmt.Printf("\n%v\n", err)
-		fmt.Println(summary)
-		os.Exit(1)
-	}()
-
-	if insecure {
-		httpClient = &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true,
-				},
-			},
+		for {
+			select {
+			case err := <-errChan:
+				if err != nil {
+					fmt.Printf("\n%v\n", err)
+					fmt.Println(summary)
+					os.Exit(1)
+				}
+			default:
+			}
 		}
-	}
+	}()
 
 	rawURL := flag.Arg(0)
 	outFile, err := parseFilename(rawURL)
@@ -137,6 +144,10 @@ func fetchFilesize(rawURL string) (int64, error) {
 func signalHandler(calcel context.CancelFunc) {
 	<-sigChan
 	calcel()
+}
+
+func errCollecter(err error) {
+	errChan <- err
 }
 
 func usage() {

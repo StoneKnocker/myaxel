@@ -60,13 +60,13 @@ func (d *downloader) do() {
 
 			req, err := d.makeRequest(i)
 			if err != nil {
-				errChan <- err
+				errCollecter(err)
 				return
 			}
 
 			resp, err := httpClient.Do(req)
 			if err != nil {
-				errChan <- err
+				errCollecter(err)
 				return
 			}
 			defer resp.Body.Close()
@@ -77,6 +77,7 @@ func (d *downloader) do() {
 			for {
 				select {
 				case <-d.ctx.Done():
+					errCollecter(d.ctx.Err())
 					return
 				default:
 					d.Lock()
@@ -85,7 +86,7 @@ func (d *downloader) do() {
 					if err != nil {
 						if err != io.EOF {
 							d.Unlock()
-							errChan <- err
+							errCollecter(err)
 							return
 						}
 						d.Unlock()
@@ -102,5 +103,4 @@ func (d *downloader) do() {
 	}
 	wg.Wait()
 	d.fl.Close()
-	d.summary.finished = true
 }

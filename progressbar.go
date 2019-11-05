@@ -23,9 +23,9 @@ func newBar(summary *result) *bar {
 func (b *bar) show() {
 	b.Start()
 
-	for !b.summary.finished {
+	for !b.summary.finished() {
 		b.SetCurrent(b.summary.downLen)
-		time.Sleep(time.Millisecond * 50)
+		time.Sleep(time.Millisecond)
 	}
 
 	b.SetCurrent(b.summary.total)
