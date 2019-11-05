@@ -59,7 +59,7 @@ func main() {
 	go signalHandler(cancel)
 
 	//deal with error
-	var summary *result
+	var summary *Summary
 	go func() {
 		for {
 			select {
@@ -94,18 +94,18 @@ func main() {
 		return
 	}
 
-	summary = newResult(filesize)
+	summary = NewSummary(filesize)
 	go func() {
-		loader := newDownloader(ctx, routineNum, filename, rawURL, summary)
-		loader.do()
+		loader := NewDownloader(ctx, routineNum, filename, rawURL, summary)
+		loader.Do()
 	}()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		bar := newBar(summary)
-		bar.show()
+		bar := NewBar(summary)
+		bar.Show()
 	}()
 	wg.Wait()
 

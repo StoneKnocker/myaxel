@@ -10,22 +10,24 @@ import (
 	"sync/atomic"
 )
 
-type downloader struct {
+//Downloader struct
+type Downloader struct {
 	sync.Mutex
 	fl *os.File
 
 	routineNum int
 	url        string
 	ctx        context.Context
-	summary    *result
+	summary    *Summary
 }
 
-func newDownloader(ctx context.Context, routineNum int, filename string, url string, summary *result) *downloader {
+//NewDownloader for file download
+func NewDownloader(ctx context.Context, routineNum int, filename string, url string, summary *Summary) *Downloader {
 	f, err := os.Create(filename)
 	if err != nil {
 		panic(err)
 	}
-	return &downloader{
+	return &Downloader{
 		fl:         f,
 		routineNum: routineNum,
 		url:        url,
@@ -34,7 +36,7 @@ func newDownloader(ctx context.Context, routineNum int, filename string, url str
 	}
 }
 
-func (d *downloader) makeRequest(routineNO int) (*http.Request, error) {
+func (d *Downloader) makeRequest(routineNO int) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(d.ctx, "GET", d.url, nil)
 	if err != nil {
 		return nil, err
@@ -51,7 +53,8 @@ func (d *downloader) makeRequest(routineNO int) (*http.Request, error) {
 	return req, nil
 }
 
-func (d *downloader) do() {
+//Do starts to download file
+func (d *Downloader) Do() {
 	var wg sync.WaitGroup
 	wg.Add(d.routineNum)
 	for i := 0; i < d.routineNum; i++ {

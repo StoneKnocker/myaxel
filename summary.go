@@ -5,24 +5,28 @@ import (
 	"time"
 )
 
-type result struct {
+//Summary struct
+type Summary struct {
 	downLen int64
 	start   time.Time
 	total   int64
 }
 
-func newResult(total int64) *result {
-	return &result{
+//NewSummary return new summary
+func NewSummary(total int64) *Summary {
+	return &Summary{
 		start: time.Now(),
 		total: total,
 	}
 }
 
-func (r *result) finished() bool {
+//Finished reports whether file download finished
+func (r *Summary) Finished() bool {
 	return r.downLen == r.total
 }
 
-func (r *result) String() string {
+//String returns the summary info
+func (r *Summary) String() string {
 	desc := "finished"
 	if r.downLen != r.total {
 		desc = "interrupted"

@@ -6,13 +6,15 @@ import (
 	"github.com/cheggaaa/pb/v3"
 )
 
-type bar struct {
-	summary *result
+//Bar struct
+type Bar struct {
+	summary *Summary
 	*pb.ProgressBar
 }
 
-func newBar(summary *result) *bar {
-	b := &bar{
+//NewBar for bar
+func NewBar(summary *Summary) *Bar {
+	b := &Bar{
 		summary:     summary,
 		ProgressBar: pb.New64(summary.total),
 	}
@@ -20,10 +22,11 @@ func newBar(summary *result) *bar {
 	return b
 }
 
-func (b *bar) show() {
+//Show the progress bar
+func (b *Bar) Show() {
 	b.Start()
 
-	for !b.summary.finished() {
+	for !b.summary.Finished() {
 		b.SetCurrent(b.summary.downLen)
 		time.Sleep(time.Millisecond)
 	}
